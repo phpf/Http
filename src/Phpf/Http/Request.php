@@ -96,7 +96,7 @@ class Request {
 		
 		$this->uri		= $uri;
 		$this->query	= $query;
-		$this->headers	= Http::getRequestHeaders($server);
+		$this->headers	= Http::requestHeaders($server);
 		
 		$method = $server['REQUEST_METHOD'];
 		
