@@ -1,43 +1,91 @@
 <?php
 /**
- * @package Phpf.Routes
- * @subpackage Response
+ * @package Phpf.Http
  */
 
 namespace Phpf\Http;
 
 use Phpf\Http\Http;
-use Phpf\Http\Request\Headers;
 
 class Response {
 	
+	/**
+	 * Content type to use if no other valid type is requested.
+	 * @var boolean
+	 */
 	const DEFAULT_CONTENT_TYPE = 'text/html';
 	
+	/**
+	 * Charset to use in header.
+	 * @var string
+	 */
 	protected $charset = 'UTF-8';
 	
+	/**
+	 * HTTP Status code to send.
+	 * @var integer
+	 */
 	protected $status;
 	
-	protected $contentType;
+	/**
+	 * The output content type.
+	 * @var string
+	 */
+	protected $content_type;
 	
-	protected $allowedContentTypes = array(
+	/**
+	 * Associative array of permitted content types.
+	 * @var array
+	 */
+	protected $allowed_content_types = array(
 		'html' => 'text/html',
 		'json' => 'application/json',
 		'jsonp' => 'text/javascript',
 		'xml' => 'text/xml',
 	);
 	
+	/**
+	 * Associative array of headers to send.
+	 * @var array
+	 */
 	protected $headers = array();
 	
+	/**
+	 * Response body.
+	 * @var string
+	 */
 	protected $body;
 	
+	/**
+	 * Whether to gzip the response body.
+	 * @var boolean
+	 */
 	protected $gzip;
 	
-	protected static $_instance;
-	
-	public static function i(){
-		if ( ! isset( self::$_instance ) )
-			self::$_instance = new self();
-		return self::$_instance;
+	/**
+	 * Sets up Response using some data from the Request.
+	 */
+	public function __construct( Request $request ){
+		
+		if ( Request\Headers::acceptEncoding($request->headers, 'gzip') && extension_loaded('zlib') ){
+			$this->gzip = true;
+		} else {
+			$this->gzip = false;
+		}
+		
+		if ( $request->isXhr() ){
+			$this->nocache();
+		}
+		
+		// first try to set content type using parameter
+		if ( isset($request->content_type) && $this->maybeSetContentType($request->content_type) ){
+			return;
+		}
+		
+		// set content type using header
+		if ( $type = Request\Headers::accept($request->headers, $this->allowed_content_types) ){
+			$this->contentType = $type;
+		}
 	}
 	
 	/**
@@ -76,30 +124,6 @@ class Response {
 	}
 	
 	/**
-	 * Sets up Response, grabbing a few properties from Request.
-	 */
-	public function init( Request $request ){
-		
-		if ( Headers::acceptEncoding($request->headers, 'gzip') && extension_loaded('zlib') ){
-			$this->gzip = true;
-		} else {
-			$this->gzip = false;
-		}
-		
-		if ( $request->isXhr() ){
-			$this->nocache();
-		}
-		
-		if ( isset($request->content_type) && $this->maybeSetContentType($request->content_type) ){
-			return;
-		}
-		
-		if ( $type = Headers::accept($request->headers, $this->allowedContentTypes) ){
-			$this->contentType = $type;
-		}
-	}
-	
-	/**
 	 * Sets the body content.
 	 */
 	public function setBody( $value, $overwrite = true ){
@@ -120,14 +144,14 @@ class Response {
 	/**
 	 * Adds content to the body.
 	 */
-	public function addBody( $value, $where = 'append' ){
+	public function addBody( $value, $how = 'append' ){
 			
 		if ( is_object($value) && !$value = $this->objectStr($value) ){
 			trigger_error('Cannot set object as body - no __toString() method.', E_USER_NOTICE);
 			return $this;
 		}
 		
-		if ( 'prepend' === $where || 'before' === $where ){
+		if ( 'prepend' === $how || 'before' === $how ){
 			$this->body = $value . $this->body;
 		} else {
 			$this->body .= $value;
@@ -171,7 +195,7 @@ class Response {
 	 * Sets the content type.
 	 */
 	public function setContentType( $type ){
-		$this->contentType = $type;
+		$this->content_type = $type;
 		return $this;
 	}
 	
@@ -179,19 +203,19 @@ class Response {
 	 * Returns true if given response content-type/media type is allowed.
 	 */
 	function isContentTypeAllowed( $type ){
-		return isset($this->allowedContentTypes[ $type ]);	
+		return isset($this->allowed_content_types[ $type ]);	
 	}
 	
 	/**
-	 * Sets $content_type, but only if $type is a valid content-type.
+	 * Sets $content_type, but only if $type is a valid content type.
 	 */
 	public function maybeSetContentType( $type ){
 		
 		if ( $this->isContentTypeAllowed($type) ){
 			$this->setContentType($type);
 			return true;
-		} elseif ( in_array($type, $this->allowedContentTypes) ){
-			$this->setContentType( array_search($type, $this->allowedContentTypes) );
+		} elseif ( in_array($type, $this->allowed_content_types) ){
+			$this->setContentType( array_search($type, $this->allowed_content_types) );
 			return true;
 		}
 		
@@ -211,6 +235,18 @@ class Response {
 	}
 	
 	/**
+	 * Sets array of headers.
+	 */
+	public function setHeaders( array $headers, $overwrite = true ){
+			
+		foreach($headers as $name => $value){
+			$this->setHeader($name, $value, $overwrite);
+		}
+		
+		return $this;
+	}
+	
+	/**
 	 * Adds a header. Does not replace existing.
 	 */
 	public function addHeader( $name, $value ){
@@ -218,7 +254,14 @@ class Response {
 	}
 	
 	/**
-	 * Returns array of currently set headers.
+	 * Adds array of headers.
+	 */
+	public function addHeaders( array $headers ){
+		$this->setHeaders($headers, false);
+	}
+	
+	/**
+	 * Returns assoc. array of currently set headers.
 	 */
 	 public function getHeaders(){
 	 	return $this->headers;
@@ -231,28 +274,16 @@ class Response {
 	 */
 	public function setCacheHeaders( $expires_offset = 86400 ){
 		
-		if ( ! $expires_offset || empty($expires_offset) ){
-				
-			$expires = 'Thu, 19 Nov 1981 08:52:00 GMT';
-			$pragma = 'no-cache';
-			$control = 'no-cache, must-revalidate, max-age=0';
-			
+		$headers = Http::cacheHeaders($expires_offset);
+		
+		// have pragma means no cache
+		if ( isset($headers['Pragma']) ){ 
 			header_remove('Last-Modified');
-			
-			if ( isset($this->headers['Last-Modified']) )
-				unset($this->headers['Last-Modified']);
-			
-		} else {
-			$control = "Public, max-age=$expires_offset";
-			$expires = gmdate('D, d M Y H:i:s', time() + $expires_offset) . ' GMT';
+			unset($this->headers['Last-Modified']);
 		}
 		
-		$this->setHeader('Expires', $expires);
-		$this->setHeader('Cache-Control', $control);
-		
-		if ( isset($pragma) )
-			$this->setHeader('Pragma', $pragma);
-		
+		$this->addHeaders($headers);
+			
 		return $this;
 	}
 	
@@ -327,8 +358,8 @@ class Response {
 	 * Alias for addBody()
 	 * @see Request\Response::addBody()
 	 */
-	public function addContent( $value, $where = 'append' ){
-		return $this->addBody($value, $where);
+	public function addContent( $value, $how = 'append' ){
+		return $this->addBody($value, $how);
 	}
 	
 	/**
@@ -336,8 +367,8 @@ class Response {
 	 */
 	protected function getContentTypeHeader(){
 		
-		if ( isset($this->contentType) && $this->isContentTypeAllowed($this->contentType) ){
-			$type = $this->allowedContentTypes[ $this->contentType ];
+		if ( isset($this->content_type) && $this->isContentTypeAllowed($this->content_type) ){
+			$type = $this->allowed_content_types[ $this->content_type ];
 		} else {
 			$type = self::DEFAULT_CONTENT_TYPE;
 		}

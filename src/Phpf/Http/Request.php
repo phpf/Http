@@ -1,7 +1,6 @@
 <?php
 /**
- * @package Phpf.Util
- * @subpackage Http.Request
+ * @package Phpf.Http
  */
 
 namespace Phpf\Http;

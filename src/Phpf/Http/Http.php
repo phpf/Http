@@ -1,4 +1,7 @@
 <?php
+/**
+ * @package Phpf.Http
+ */
 
 namespace Phpf\Http;
 
@@ -46,56 +49,18 @@ class Http {
 	 */
 	const METHOD_PATCH = 'PATCH';	
 	
-	// Trace and Connect not yet supported
-	//const METHOD_TRACE = 'TRACE';
-	//const METHOD_CONNECT = 'CONNECT';
-		
 	/** 
 	* Returns HTTP request headers as array.
 	*/
 	public static function requestHeaders( array $server = null ){
-		static $headers;
-		
-		if ( empty($server) || $server === $_SERVER ){
-			$server =& $_SERVER;
-			// get once per request
-			if ( isset($headers) )
-				return $headers;
-		}
-		
-		if ( function_exists('apache_request_headers') ){
-			$_headers = apache_request_headers();
-		} elseif ( extension_loaded('http') ){
-			$_headers = http_get_request_headers();
-		} else { // Manual labor
-			$_headers = array();
-			$misfits = array('CONTENT_TYPE', 'CONTENT_LENGTH', 'CONTENT_MD5', 'PHP_AUTH_USER', 'PHP_AUTH_PW', 'PHP_AUTH_DIGEST', 'AUTH_TYPE');
-			foreach ( $server as $key => $value ) {
-				if ( 0 === strpos($key, 'HTTP_') ){
-					$_headers[ $key ] = $value;
-				} elseif ( in_array($key, $misfits) ){
-					$_headers[ $key ] = $value;
-				}
-			}
-		}
-		
-		// Normalize header keys
-		$headers = array();
-		foreach ( $_headers as $key => $value ) {
-			$key = str_replace('http-', '', str_replace('_', '-', strtolower($key)));
-			$headers[ $key ] = $value;
-		}
-		
-		return $headers;
+		return Request\Headers::getAll($server);
 	}
 			
 	/**
 	* Returns a single HTTP request header if set.
 	*/
 	public static function requestHeader( $name, array $server = null ){
-		$headers = self::requestHeaders($server);
-		$name = str_replace('_', '-', strtolower($name));
-		return isset($headers[ $name ]) ? $headers[ $name ] : null;
+		return Request\Headers::get($name, $server);
 	}
 	
 	/**
@@ -162,22 +127,23 @@ class Http {
 		$headers['Last-Modified'] = false;
 		return $headers;
 	}
+	
+	public static function cacheHeaders( $expires_offset = 86400 ){
 		
-	/**
-	 * Set the headers for caching for 10 days with JavaScript content type.
-	 * 
-	 * @return Associative array of cache headers
-	 */
-	public static function jsCacheHeaders() {
-		$expiresOffset = 864000;
-		$headers = array(
-			'Content-Type' => 'text/javascript; charset=UTF-8',
-			'Vary' => 'Accept-Encoding', // Handle proxies
-			'Expires' => gmdate("D, d M Y H:i:s", time() + $expiresOffset) . ' GMT'
-		);
+		$headers = array();
+		
+		if ( 0 == $expires_offset || !is_numeric($expires_offset) ){
+			$headers['Cache-Control'] = 'no-cache, must-revalidate, max-age=0';
+			$headers['Expires'] = 'Thu, 19 Nov 1981 08:52:00 GMT';
+			$headers['Pragma'] = 'no-cache';
+						
+		} else {
+			$headers['Cache-Control'] = "Public, max-age=$expires_offset";
+			$headers['Expires'] = gmdate('D, d M Y H:i:s', time() + $expires_offset) . ' GMT';
+		}
+		
 		return $headers;
-	}
-				
+	}		
 	/**
 	 * Retrieve the description for the HTTP status.
 	 *

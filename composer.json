@@ -1,0 +1,27 @@
+{
+	"name": "phpf/http",
+	"type": "library",
+	"description": "Phpf HTTP package",
+	"keywords": ["HTTP", "Request", "Response"],
+	"homepage": "https://github.com/phpf/Http",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "The PHPf Developer",
+			"email": "wellspeterson@live.com"
+		}
+	],
+	"require": {
+		"php": ">=5.3",
+		"phpf/util": "dev-master"
+	},
+	"suggest": {
+		"phpf/routes": "Add a routes package complete with speedy router."
+	},
+	"autoload": {
+		"psr-0": {
+			"Phpf\\Http\\": "src/"
+		}
+	},
+	"minimum-stability": "dev"
+}
