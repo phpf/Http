@@ -98,21 +98,6 @@ class Http {
 		return isset($headers[ $name ]) ? $headers[ $name ] : null;
 	}
 	
-	public static function requestHeaderAcceptEncoding( array $headers = null, $search = null ){
-			
-		if ( null === $headers ) 
-			$headers = self::requestHeaders();
-		
-		if ( !isset($headers['accept-encoding']) )	
-			return null;
-		
-		if ( is_string($search) ){
-			return false !== strpos($headers['accept-encoding'], $search);
-		}
-		
-		return $headers['accept-encoding'];
-	}
-	
 	/**
 	 * Whether using SSL
 	 */
