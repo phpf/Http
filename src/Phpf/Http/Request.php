@@ -205,6 +205,27 @@ class Request {
 	}
 	
 	/**
+	 * Am I a GET request?
+	 */
+	public function isGet(){
+		return Http::METHOD_GET === $this->method;
+	}
+	
+	/**
+	 * Am I a POST request?
+	 */
+	public function isPost(){
+		return Http::METHOD_POST === $this->method;
+	}
+	
+	/**
+	 * Am I a HEAD request?
+	 */
+	public function isHead(){
+		return Http::METHOD_HEAD === $this->method;
+	}
+	
+	/**
 	 * Disallow HTTP method override via header and query param.
 	 */
 	public function disallowMethodOverride(){

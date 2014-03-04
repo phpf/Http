@@ -28,23 +28,6 @@ class Response {
 	protected $status;
 	
 	/**
-	 * The output content type.
-	 * @var string
-	 */
-	protected $content_type;
-	
-	/**
-	 * Associative array of permitted content types.
-	 * @var array
-	 */
-	protected $allowed_content_types = array(
-		'html' => 'text/html',
-		'json' => 'application/json',
-		'jsonp' => 'text/javascript',
-		'xml' => 'text/xml',
-	);
-	
-	/**
 	 * Associative array of headers to send.
 	 * @var array
 	 */
@@ -63,6 +46,23 @@ class Response {
 	protected $gzip;
 	
 	/**
+	 * The output content type.
+	 * @var string
+	 */
+	protected $content_type;
+	
+	/**
+	 * Associative array of permitted content types.
+	 * @var array
+	 */
+	protected $allowed_content_types = array(
+		'html' => 'text/html',
+		'json' => 'application/json',
+		'jsonp' => 'text/javascript',
+		'xml' => 'text/xml',
+	);
+	
+	/**
 	 * Sets up Response using some data from the Request.
 	 */
 	public function __construct( Request $request ){
@@ -78,13 +78,11 @@ class Response {
 		}
 		
 		// first try to set content type using parameter
-		if ( isset($request->content_type) && $this->maybeSetContentType($request->content_type) ){
-			return;
-		}
-		
-		// set content type using header
-		if ( $type = Request\Headers::accept($request->headers, $this->allowed_content_types) ){
-			$this->contentType = $type;
+		if ( !isset($request->content_type) || !$this->maybeSetContentType($request->content_type) ){
+			// set content type using header
+			if ( $type = Request\Headers::accept($request->headers, $this->allowed_content_types) ){
+				$this->content_type = $type;
+			}
 		}
 	}
 	
@@ -92,24 +90,20 @@ class Response {
 	 * Send the response headers and body.
 	 */
 	public function send(){
-			
-		if ( ! isset($this->status) )
-			$this->status = 200; // assume success
 		
-		// Status header
-		$status_header = Http::statusHeader($this->status);
-		header($status_header, true, $this->status);
-		
-		// Content-Type header
-		header($this->getContentTypeHeader());
-		
-		if ( ! isset( $this->headers['Cache-Control'] ) ){
+		if ( !isset($this->headers['Cache-Control']) ){
 			$this->nocache();
 		}
 		
+		// Status header
+		$this->sendStatusHeader();
+		
+		// Content-Type header
+		$this->sendContentTypeHeader();
+		
 		// Rest of headers
 		foreach( $this->headers as $name => $value ){
-			@header( "$name: $value", true );
+			header(sprintf("%s: %s", $name, $value), true);
 		}
 		
 		// Output the body
@@ -160,14 +154,6 @@ class Response {
 		return $this;
 	}
 	
-	protected function objectStr( $object ){
-		if ( method_exists($object, '__toString') ){
-			return $object->__toString();
-		} else {
-			return null;
-		}
-	}
-	
 	/**
 	 * Sets output charset
 	 */
@@ -202,7 +188,7 @@ class Response {
 	/**
 	 * Returns true if given response content-type/media type is allowed.
 	 */
-	function isContentTypeAllowed( $type ){
+	public function isContentTypeAllowed( $type ){
 		return isset($this->allowed_content_types[ $type ]);	
 	}
 	
@@ -363,9 +349,35 @@ class Response {
 	}
 	
 	/**
-	 * Returns string for the 'Content-Type' header.
+	 * Returns string if object has __toString() method, otherwise null.
 	 */
-	protected function getContentTypeHeader(){
+	protected function objectStr( $object ){
+			
+		if ( method_exists($object, '__toString') ){
+			return $object->__toString();
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Sends the status header.
+	 */
+	protected function sendStatusHeader(){
+			
+		if ( !isset($this->status) ){
+			$this->status = 200; // assume success
+		}
+		
+		header(Http::statusHeader($this->status), true, $this->status);
+		
+		return $this;
+	}
+	
+	/**
+	 * Sends the 'Content-Type' header.
+	 */
+	protected function sendContentTypeHeader(){
 		
 		if ( isset($this->content_type) && $this->isContentTypeAllowed($this->content_type) ){
 			$type = $this->allowed_content_types[ $this->content_type ];
@@ -373,9 +385,9 @@ class Response {
 			$type = self::DEFAULT_CONTENT_TYPE;
 		}
 		
-		$charset = $this->getCharset();
+		header(sprintf("Content-Type: %s; charset=%s", $type, $this->getCharset()));
 		
-		return "Content-Type: $type; charset=$charset";
+		return $this;
 	}
 	
 }
