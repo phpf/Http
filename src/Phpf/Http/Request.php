@@ -137,6 +137,7 @@ class Request {
 	public function setPathParams( array $params ){
 		$this->path_params = $params;
 		$this->params = array_merge($this->params, $this->path_params);
+		$_REQUEST = $this->params;
 		return $this;
 	}
 	

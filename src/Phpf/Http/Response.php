@@ -55,7 +55,12 @@ class Response {
 	 * Associative array of permitted content types.
 	 * @var array
 	 */
-	protected $allowed_content_types = array('html' => 'text/html', 'json' => 'application/json', 'jsonp' => 'text/javascript', 'xml' => 'text/xml', );
+	protected $allowed_content_types = array(
+		'html' => 'text/html', 
+		'json' => 'application/json', 
+		'jsonp' => 'text/javascript', 
+		'xml' => 'text/xml', 
+	);
 
 	/**
 	 * Sets up Response using some data from the Request.
@@ -69,7 +74,7 @@ class Response {
 		}
 
 		if ( $request->isXhr() ) {
-			$this->nocache();
+			$this->setCacheHeaders(false);
 		}
 
 		// first try to set content type using parameter
@@ -109,7 +114,7 @@ class Response {
 
 		ob_end_flush();
 
-		exit ;
+		exit;
 	}
 
 	/**
@@ -148,7 +153,14 @@ class Response {
 
 		return $this;
 	}
-
+	
+	/**
+	 * Returns body string.
+	 */
+	public function getBody(){
+		return $this->body;
+	}
+	
 	/**
 	 * Sets output charset
 	 */
@@ -273,15 +285,13 @@ class Response {
 	 */
 	public function setFrameOptionsHeader( $value = 'SAMEORIGIN' ) {
 
-		switch( $value ) {
-
+		switch($value) {
 			case 'SAMEORIGIN' :
 			case 'sameorigin' :
 			case true :
 			default :
 				$value = 'SAMEORIGIN';
 				break;
-
 			case 'DENY' :
 			case 'deny' :
 			case false :
@@ -328,6 +338,37 @@ class Response {
 	}
 
 	/**
+	 * Sends the status header.
+	 */
+	public function sendStatusHeader() {
+
+		if ( ! isset($this->status) ) {
+			$this->status = 200;
+			// assume success
+		}
+
+		header(Http::statusHeader($this->status), true, $this->status);
+
+		return $this;
+	}
+
+	/**
+	 * Sends the 'Content-Type' header.
+	 */
+	public function sendContentTypeHeader() {
+
+		if ( isset($this->content_type) && $this->isContentTypeAllowed($this->content_type) ) {
+			$type = $this->allowed_content_types[$this->content_type];
+		} else {
+			$type = self::DEFAULT_CONTENT_TYPE;
+		}
+
+		header(sprintf("Content-Type: %s; charset=%s", $type, $this->getCharset()));
+
+		return $this;
+	}
+
+	/**
 	 * Alias for setBody()
 	 * @see Request\Response::setBody()
 	 */
@@ -353,37 +394,6 @@ class Response {
 		}
 
 		return null;
-	}
-
-	/**
-	 * Sends the status header.
-	 */
-	protected function sendStatusHeader() {
-
-		if ( ! isset($this->status) ) {
-			$this->status = 200;
-			// assume success
-		}
-
-		header(Http::statusHeader($this->status), true, $this->status);
-
-		return $this;
-	}
-
-	/**
-	 * Sends the 'Content-Type' header.
-	 */
-	protected function sendContentTypeHeader() {
-
-		if ( isset($this->content_type) && $this->isContentTypeAllowed($this->content_type) ) {
-			$type = $this->allowed_content_types[$this->content_type];
-		} else {
-			$type = self::DEFAULT_CONTENT_TYPE;
-		}
-
-		header(sprintf("Content-Type: %s; charset=%s", $type, $this->getCharset()));
-
-		return $this;
 	}
 
 }
