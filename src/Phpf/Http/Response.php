@@ -75,6 +75,8 @@ class Response {
 
 		if ( $request->isXhr() ) {
 			$this->setCacheHeaders(false);
+			$this->setContentTypeOptionsHeader('nosniff');
+			$this->setFrameOptionsHeader('deny');
 		}
 
 		// first try to set content type using parameter
@@ -100,14 +102,14 @@ class Response {
 
 		// Content-Type header
 		$this->sendContentTypeHeader();
-
+		
 		// Rest of headers
 		foreach ( $this->headers as $name => $value ) {
 			header(sprintf("%s: %s", $name, $value), true);
 		}
 
 		// Output the body
-		if ( ! $this->gzip || ! ob_start('ob_gzhandler') )
+		if ( DEBUG || ! $this->gzip || ! ob_start('ob_gzhandler') )
 			ob_start();
 
 		echo $this->body;
@@ -343,12 +345,16 @@ class Response {
 	public function sendStatusHeader() {
 
 		if ( ! isset($this->status) ) {
-			$this->status = 200;
-			// assume success
+			$this->status = 200; // assume success
 		}
-
-		header(Http::statusHeader($this->status), true, $this->status);
-
+		
+		$code = $this->status;
+		$desc = Http::statusHeaderDesc($code);
+		
+		header(sprintf("%s %d %s", Http::serverProtocol(), $code, $desc), true, $code);
+		
+		header(sprintf("Status: %d %s", $code, $desc));
+		
 		return $this;
 	}
 
