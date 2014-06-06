@@ -1,6 +1,6 @@
 <?php
 /**
- * @package Phpf.Http
+ * @package Phpf\Http
  */
 
 namespace Phpf\Http;
@@ -8,49 +8,77 @@ namespace Phpf\Http;
 class Response {
 
 	/**
-	 * Content type to use if no other valid type is requested.
-	 * @var string
-	 */
-	const DEFAULT_CONTENT_TYPE = 'text/html';
-
-	/**
-	 * The output content type.
+	 * Value to use in Content-Type header.
+	 * 
 	 * @var string
 	 */
 	protected $content_type;
-
+	
 	/**
-	 * Charset to use in content-type header.
+	 * Default value to use in Content-Type header.
+	 * 
+	 * Uses ini value 'default_mimetype', if set.
+	 * 
 	 * @var string
 	 */
-	protected $charset = 'UTF-8';
+	protected $default_content_type;
+	
+	/**
+	 * Charset to use in Content-Type header.
+	 * 
+	 * @var string
+	 */
+	protected $charset;
 
 	/**
-	 * HTTP Status code to send.
+	 * HTTP response status code.
+	 * 
 	 * @var integer
 	 */
 	protected $status;
 
 	/**
-	 * Associative array of headers to send.
+	 * Associative array of response headers.
+	 * 
 	 * @var array
 	 */
 	protected $headers = array();
 
 	/**
-	 * Response body.
+	 * Response body string.
+	 * 
 	 * @var string
 	 */
 	protected $body;
 	
 	/**
-	 * Whether to gzip the response body.
+	 * Whether to send a message body in the response.
+	 * 
+	 * False for HEAD requests as per RFC 3875.
+	 * 
 	 * @var boolean
 	 */
-	protected $gzip;
+	protected $send_body;
+	
+	/**
+	 * Whether the response has been sent.
+	 * 
+	 * Used for auto-send on shutdown and preventing multiple responses.
+	 * 
+	 * @var boolean
+	 */
+	protected $sent = false;
+	
+	/**
+	 * Whether to gzip the response body.
+	 * 
+	 * @var boolean
+	 */
+	protected $gzip_body;
 	
 	/**
 	 * Associative array of permitted content types.
+	 * 
 	 * @var array
 	 */
 	protected $content_types = array(
@@ -59,13 +87,25 @@ class Response {
 		'jsonp' => 'text/javascript',
 		'json'	=> 'application/json',
 	);
-
+	
 	/**
-	 * Constructor - sets gzip to false by default.
+	 * Sets defaults and registers the 'send()' method as a shutdown function.
+	 * 
+	 * The response will not sent be more than once - if send() is called before 
+	 * shutdown, or multiple times otherwise, it will only be sent the first time.
+	 * 
 	 * @return void
 	 */
 	public function __construct() {
-		$this->gzip = false;
+		
+		$this->gzip_body = false;
+		
+		$this->charset = ini_get('default_charset') ?: 'UTF-8';
+		
+		$this->default_content_type = ini_get('default_mimetype') ?: 'text/html';
+		
+		// automatically send response
+		register_shutdown_function(array($this, 'send'));
 	}
 	
 	/**
@@ -76,15 +116,20 @@ class Response {
 	 */
 	public function setRequest(Request $request) {
 		
+		// send body if not a HEAD request
+		$this->send_body = ! $request->is('HEAD');
+		
+		$http = Http::instance();
+		
 		// first try to set content type using parameter (if set)
 		if (! isset($request->content_type) || ! $this->maybeSetContentType($request->content_type)) {
 			// now try using header (if set)
-			$this->content_type = http_negotiate_content_type(array_values($this->content_types));
+			$this->content_type = $http->negotiateContentType(array_values($this->content_types));
 		}
 		
 		// shall we gzip?
-		if (http_in_request_header('accept-encoding', 'gzip') && extension_loaded('zlib')) {
-			$this->gzip = true;
+		if ($http->inRequestHeader('accept-encoding', 'gzip') && extension_loaded('zlib')) {
+			$this->gzip_body = true;
 		}
 		
 		// For XHR/AJAX requests, don't cache response, nosniff, and deny iframes
@@ -96,16 +141,45 @@ class Response {
 		
 		return $this;
 	}
+	
+	/**
+	 * Redirects the user's browser to a new location.
+	 * 
+	 * @param string $url URL to redirect user to.
+	 * @param int $status [Optional] Valid redirect status code to send. Default 0 (sends 302).
+	 * @param boolean $send Whether to send the redirect response immediately. Default true.
+	 * @return $this
+	 */
+	public function redirect($url, $status = 0, $send = true) {
+			
+		$this->setHeader('Location', $url, true);
+		
+		$this->send_body = false;
+		
+		if (300 < $status && 400 > $status) {
+			$this->setStatus($status);
+		}
+		
+		if ($send) {
+			$this->send();
+		}
+		
+		return $this;
+	}
 
 	/**
-	 * Send the response headers and body.
+	 * Sends the response headers and body, then exits.
+	 * 
 	 * @return void
 	 */
 	public function send() {
 		
+		// don't send more than once
+		if ($this->sent) return;
+		
 		// (maybe) start output buffering
-		if (1 >= ob_get_level()) {
-			#if (! $this->gzip || ! ob_start('ob_gzhandler'))
+		if (ob_get_level()) {
+			#if (! $this->gzip_body || ! ob_start('ob_gzhandler'))
 				ob_start();
 		}
 		
@@ -114,36 +188,42 @@ class Response {
 			$this->nocache();
 		}
 
-		// Status header
+		// send Status header
 		if (! isset($this->status)) {
 			if (isset($GLOBALS['HTTP_RESPONSE_CODE'])) {
 				$this->status = $GLOBALS['HTTP_RESPONSE_CODE'];
 			} else if (isset($this->headers['Location'])) {
-				$this->status = HTTP_REDIRECT_FOUND;
+				$this->status = 302;
 			} else {
 				$this->status = 200;
 			}
 		}
 		
-		http_send_status($this->status);
+		$http = Http::instance();
 		
-		// Content-Type header
-		if (! isset($this->content_type)) {
-			$this->content_type = static::DEFAULT_CONTENT_TYPE;
-		}
+		$http->sendStatus($this->status);
+		
+		// send Content-Type header
+		$content_type = isset($this->content_type) ? $this->content_type : $this->default_content_type;
+		
+		$http->sendContentType($content_type, $this->getCharset());
 
-		http_send_content_type($this->content_type, $this->getCharset());
-
-		// Rest of headers
+		// send other headers
 		foreach ( $this->headers as $name => $value ) {
 			header(sprintf("%s: %s", $name, $value), true);
 		}
 		
-		// Output the body
-		echo $this->body;
-
-		ob_end_flush();
-
+		// output the body
+		if ($this->send_body) {
+			echo $this->body;
+		}
+		
+		if (ob_get_level()) {
+			ob_end_flush();
+		}
+		
+		$this->sent = true;
+		
 		exit;
 	}
 
@@ -156,13 +236,11 @@ class Response {
 	 */
 	public function setBody($value, $how = 'replace') {
 			
-		if (! is_string($value)) {
-			if (method_exists($value, '__toString')) {
-				$value = $value->__toString();
-			} else {
-				trigger_error('Cannot set var as body - given '.gettype($value), E_USER_NOTICE);
-				return $this;
+		if (! is_scalar($value)) {
+			if (! method_exists($value, '__toString')) {
+				throw new \InvalidArgumentException('Cannot set var as body - given '.gettype($value));
 			}
+			$value = $value->__toString();
 		}
 
 		switch(strtolower($how)) {
@@ -176,7 +254,7 @@ class Response {
 				break;
 			case 'prepend' :
 			case 'before' :
-				$this->body = $value . $this->body;
+				$this->body = $value.$this->body;
 				break;
 		}
 		
@@ -255,6 +333,15 @@ class Response {
 	}
 	
 	/**
+	 * Returns content type, if set.
+	 * 
+	 * @return string|null Content-type if set, otherwise null.
+	 */
+	public function getContentType() {
+		return isset($this->content_type) ? $this->content_type : null;
+	}
+	
+	/**
 	 * Returns true if given response content-type/media type is known.
 	 * 
 	 * @param string $type Content-type MIME
@@ -305,11 +392,9 @@ class Response {
 	 * @return $this
 	 */
 	public function setHeaders(array $headers, $overwrite = true) {
-
-		foreach ( $headers as $name => $value ) {
+		foreach ($headers as $name => $value) {
 			$this->setHeader($name, $value, $overwrite);
 		}
-
 		return $this;
 	}
 
@@ -361,7 +446,7 @@ class Response {
 			unset($this->headers['Last-Modified']);
 		}
 
-		$this->addHeaders($headers);
+		$this->setHeaders($headers);
 
 		return $this;
 	}
@@ -423,18 +508,12 @@ class Response {
 		return $this->setHeader('X-Content-Type-Options', 'nosniff');
 	}
 
-	/**
-	 * &Alias of setBody()
-	 * @return $this
-	 */
+	/** &Alias of setBody() */
 	public function setContent($value) {
 		return $this->setBody($value);
 	}
 
-	/**
-	 * &Alias of addBody()
-	 * @return $this
-	 */
+	/** &Alias of addBody() */
 	public function addContent($value, $how = 'append') {
 		return $this->addBody($value, $how);
 	}

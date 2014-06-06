@@ -1,7 +1,7 @@
 {
 	"name": "phpf/http",
 	"type": "library",
-	"description": "Phpf HTTP package",
+	"description": "Phpf HTTP package. Includes several framework-agnostic utilities.",
 	"keywords": ["HTTP", "Request", "Response"],
 	"homepage": "https://github.com/phpf/Http",
 	"license": "MIT",
@@ -12,15 +12,10 @@
 		}
 	],
 	"require": {
-		"php": ">=5.3",
-		"phpf/util": "dev-master",
-		"phpf/httputil": "dev-master"
-	},
-	"suggest": {
-		"phpf/routes": "Add a routes package complete with speedy router."
+		"php": ">=5.3"
 	},
 	"autoload": {
-		"psr-0": {
+		"psr-4": {
 			"Phpf\\Http\\": "src/"
 		}
 	},
