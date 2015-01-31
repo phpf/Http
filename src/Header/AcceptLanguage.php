@@ -1,9 +1,12 @@
 <?php
 
-namespace Phpf\Http\Header;
+namespace xpl\Http\Header;
 
 class AcceptLanguage extends NegotiatedHeader {
 	
+	/**
+	 * Additional check for prefix matches.
+	 */
 	protected function nomatch(array &$results, array $accepted) {
 		
 		$accept = array();

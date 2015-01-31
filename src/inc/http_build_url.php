@@ -1,6 +1,6 @@
 <?php
 /**
- * @package HttpUtil
+ * @package xpl\Http
  */
 
 /**
@@ -107,12 +107,21 @@ function http_build_url($url, $parts = array(), $flags = HTTP_URL_REPLACE, &$new
 	$parsed = is_array($url) ? $url : parse_url($url);
 
 	// make sure we always have a scheme, host and path
-	if (empty($parsed['scheme']))
-		$parsed['scheme'] = 'http'.(http_env('ssl') ? 's' : '');
-	if (empty($parsed['host']))
-		$parsed['host'] = http_env('host');
-	if (! isset($parsed['path']))
+	if (empty($parsed['scheme'])) {
+		static $scheme;
+		isset($scheme) or $scheme = 'http'.(http_env('ssl') ? 's' : '');
+		$parsed['scheme'] = $scheme;
+	}
+	
+	if (empty($parsed['host'])) {
+		static $host;
+		isset($host) or $host = http_env('host');
+		$parsed['host'] = $host;
+	}
+	
+	if (! isset($parsed['path'])) {
 		$parsed['path'] = '';
+	}
 
 	// make the path absolute if needed
 	if (! empty($parsed['path']) && '/' !== substr($parsed['path'], 0, 1)) {
@@ -127,7 +136,7 @@ function http_build_url($url, $parts = array(), $flags = HTTP_URL_REPLACE, &$new
 
 	// replace the original URL with it's new parts (if applicable)
 	if ($flags & HTTP_URL_REPLACE) {
-		foreach ( $keys as $key ) {
+		foreach ($keys as $key) {
 			if (isset($parts[$key])) {
 				$parsed[$key] = $parts[$key];
 			}
@@ -151,12 +160,15 @@ function http_build_url($url, $parts = array(), $flags = HTTP_URL_REPLACE, &$new
 			}
 		}
 	}
-
-	// strips all the applicable sections of the URL
-	// note: scheme and host are never stripped
-	foreach ( $keys as $key ) {
-		if ($flags & (int)constant('HTTP_URL_STRIP_'.strtoupper($key))) {
-			unset($parsed[$key]);
+	
+	// Skip this part if default flag
+	if (HTTP_URL_REPLACE !== $flags) {
+		// strips all the applicable sections of the URL
+		// note: scheme and host are never stripped
+		foreach ($keys as $key) {
+			if ($flags & (int)constant('HTTP_URL_STRIP_'.strtoupper($key))) {
+				unset($parsed[$key]);
+			}
 		}
 	}
 

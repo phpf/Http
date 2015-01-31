@@ -1,6 +1,6 @@
 <?php
 
-namespace Phpf\Http\Header;
+namespace xpl\Http\Header;
 
 class MultiValueHeader extends Header {
 	

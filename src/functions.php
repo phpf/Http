@@ -1,7 +1,6 @@
 <?php
 
-namespace Phpf\Http {
-	
+namespace xpl\Http {
 	class functions {
 		// dummy class
 	}
@@ -9,16 +8,32 @@ namespace Phpf\Http {
 
 namespace {
 	
-	use Phpf\Http\Http;
+	use xpl\Http\Server\Server;
+	use xpl\Http\Util;
 	
+	/**
+	 * http_response_code
+	 * for PHP < 5.4
+	 * @see inc/http_response_code.php
+	 */
 	if (! function_exists('http_response_code')) {
 		require __DIR__.'/inc/http_response_code.php';
 	}
 	
+	/**
+	 * http_build_url
+	 * @see inc/http_build_url.php
+	 */
 	if (! function_exists('http_build_url')) {
 		require __DIR__.'/inc/http_build_url.php';
 	}
 	
+	/**
+	 * Returns HTTP-relevant environment (server) information.
+	 * 
+	 * @param string $var One of 'ssl', 'host', 'domain', or 'protocol'.
+	 * @return mixed 'ssl' returns boolean; the rest return a string.
+	 */
 	function http_env($var) {
 		switch(strtolower($var)) {
 			
@@ -75,7 +90,7 @@ namespace {
 	 * * http_negotiate_language()
 	 */
 	
-if (! function_exists('http_get_request_headers')) :
+	if (! extension_loaded('http') || version_compare(phpversion('http'), "2.0", '<')) :
 	
 	/**
 	 * Returns a valid HTTP date using given timestamp or current time if none given.
@@ -84,7 +99,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return string Date formatted regarding RFC 1123.
 	 */
 	function http_date($timestamp = null) {
-		return Http::instance()->date($timestamp);
+		return Util::date($timestamp);
 	}
 	
 	/**
@@ -96,7 +111,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return void
 	 */
 	function http_redirect($url, $status = 0, $exit = true) {
-		Http::instance()->redirect($url, $status, $exit);
+		Util::redirect($url, $status, $exit);
 	}
 	
 	/**
@@ -106,7 +121,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return void
 	 */
 	function http_send_status($code) {
-		Http::instance()->sendStatus($code);
+		Util::sendStatus($code);
 	}
 	
 	/**
@@ -117,7 +132,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return boolean True if sent, false/warning error if missing a part.
 	 */
 	function http_send_content_type($content_type = 'application/x-octetstream', $charset = null) {
-		return Http::instance()->sendContentType($content_type, $charset);
+		return Util::sendContentType($content_type, $charset);
 	}
 	
 	/**
@@ -128,7 +143,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @param string $name [Optional] Populates "name" in header.
 	 */
 	function http_send_content_disposition($disposition = 'attachment', $filename = null, $name = null) {
-		Http::instance()->sendContentDisposition($disposition, $filename, $name);
+		Util::sendContentDisposition($disposition, $filename, $name);
 	}
 	
 	/**
@@ -145,7 +160,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return void
 	 */
 	function http_send_file($file, $filetype = 'download', $filename = null) {
-		Http::instance()->sendFile($file, $filetype, $filename);
+		Util::sendFile($file, $filetype, $filename);
 	}
 	
 	/**
@@ -162,7 +177,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return string HTTP request body.
 	 */
 	function http_get_request_body() {
-		return Http::instance()->getRequestBody();
+		return Server::instance()->getRequestBody();
 	}
 	
 	/**
@@ -175,7 +190,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return resource Read-only file handle for php://input stream.
 	 */
 	function http_get_request_body_stream() {
-		return Http::instance()->getRequestBodyStream();
+		return Server::instance()->getRequestBodyStream();
 	}
 	
 	/**
@@ -190,7 +205,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return array HTTP request headers, keys stripped of "HTTP_" and lowercase.
 	 */
 	function http_get_request_headers() {
-		return Http::instance()->getRequestHeaders();
+		return Server::instance()->getRequestHeaders();
 	}
 	
 	/**
@@ -200,7 +215,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return string|null		Header value, if set, otherwise null.
 	 */
 	function http_get_request_header($name) {
-		return Http::instance()->getRequestHeader($name);
+		return Server::instance()->getRequestHeader($name);
 	}
 	
 	/**
@@ -212,7 +227,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return boolean			True if match, otherwise false.
 	 */
 	function http_match_request_header($name, $value, $match_case = false) {
-		return Http::instance()->matchRequestHeader($name, $value, $match_case);
+		return Server::instance()->matchRequestHeader($name, $value, $match_case);
 	}
 	
 	/**
@@ -227,7 +242,7 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return string		Matched content-type, or first array item if no match.
 	 */
 	function http_negotiate_content_type(array $accept) {
-		return Http::instance()->negotiateContentType($accept);
+		return Server::instance()->negotiateContentType($accept);
 	}
 	
 	/**
@@ -242,10 +257,11 @@ if (! function_exists('http_get_request_headers')) :
 	 * @return string Best-match language, or first language given if no match.
 	 */
 	function http_negotiate_language(array $accept, &$result = null) {
-		return Http::instance()->negotiateLanguage($accept, $result);
+		return Server::instance()->negotiateLanguage($accept, $result);
 	}
 	
-endif;
+	// end if ! pecl_http v1
+	endif;
 	
 	/**
 	 * Returns an associative array of cache headers suitable for use in header().
@@ -260,7 +276,7 @@ endif;
 	 * @return array Associative array of cache headers.
 	 */
 	function http_build_cache_headers($expires_offset = 86400) {
-		return Http::instance()->buildCacheHeaders($expires_offset);
+		return Util::buildCacheHeaders($expires_offset);
 	}
 	
 	/**
@@ -279,7 +295,7 @@ endif;
 	 * 						or first array value if no match found.
 	 */
 	function http_negotiate_request_header($name, array $accept) {
-		return Http::instance()->negotiateRequestHeader($name, $accept);
+		return Server::instance()->negotiateRequestHeader($name, $accept);
 	}
 	
 	/**
@@ -291,7 +307,7 @@ endif;
 	 * @return boolean			True if found, otherwise false.
 	 */
 	function http_in_request_header($name, $value, $match_case = false) {
-		return Http::instance()->inRequestHeader($name, $value, $match_case);
+		return Server::instance()->inRequestHeader($name, $value, $match_case);
 	}
 	
 	/**
@@ -301,7 +317,7 @@ endif;
 	 * @return string		Status description string, or empty string if invalid.
 	 */
 	function http_response_code_desc($code) {
-		return \Phpf\Http\Status::get(intval($code), '');
+		return Util::getStatusCodeText($code, '');
 	}
 	
 	/**
@@ -311,8 +327,8 @@ endif;
 	 * @param string $default	Value to return if mime not found.
 	 * @return string			MIME, if found, otherwise default.
 	 */
-	function mimetype($filetype, $default = 'application/octet-stream') {
-		return \Phpf\Http\Mime::get(strtolower($filetype), $default);
+	function mimetype($extension, $default = 'application/octet-stream') {
+		return Util::getMimetype(strtolower(ltrim($filetype, '.')), $default);
 	}
 	
 	/**
@@ -323,7 +339,7 @@ endif;
 	 * @return string Filetype for MIME, or default if not found.
 	 */
 	function mime2filetype($mimetype, $default = null) {
-		return \Phpf\Http\Mime::lookup($mimetype, $default);
+		return Util::lookupMimetypeExtension($mimetype, $default);
 	}
 	
 }

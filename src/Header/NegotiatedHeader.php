@@ -1,6 +1,6 @@
 <?php
 
-namespace Phpf\Http\Header;
+namespace xpl\Http\Header;
 
 /**
  * Represents a request header where the value is negotiated for the response.
@@ -44,12 +44,10 @@ class NegotiatedHeader extends MultiValueHeader {
 		// default type is first array item
 		$results['default'] = $accepted[0];
 		
-		// use isset()
-		$accepted = array_fill_keys($accepted, true);
-		
-		foreach($this->values as $pos => $valObj) {
-			if (isset($accepted[$valObj->value])) {
-				return $results['best'] = $this->negotiated = $valObj->value;
+		foreach($this->values as $pos => $obj) {
+			
+			if (in_array($obj->value, $accepted, true)) {
+				return $results['best'] = $this->negotiated = $obj->value;
 			}
 		}
 		

@@ -1,6 +1,6 @@
 <?php
 
-namespace Phpf\Http\Header;
+namespace xpl\Http\Header;
 
 /**
  * Represents a single HTTP header.
@@ -11,12 +11,11 @@ class Header implements HeaderInterface {
 	 * Construct the header using the name and value.
 	 * 
 	 * @param string $name Header name.
-	 * @param string|null $value Header value, if available.
+	 * @param string $value Header value.
 	 */
-	public function __construct($name, $value = null) {
+	public function __construct($name, $value) {
 		$this->setName($name);
-		if (isset($value))
-			$this->setValue($value);
+		$this->setValue($value);
 	}
 	
 	/**
@@ -41,17 +40,6 @@ class Header implements HeaderInterface {
 	}
 	
 	/**
-	 * Sets header value
-	 * 
-	 * @param string $value Header value
-	 * @return $this
-	 */
-	protected function setValue($value) {
-		$this->value = $value;
-		return $this;
-	}
-	
-	/**
 	 * Sets the header name.
 	 * 
 	 * Name is lowercased and stripped of 'http' prefixes. 
@@ -61,7 +49,26 @@ class Header implements HeaderInterface {
 	 * @return $this
 	 */
 	protected function setName($name) {
-		$this->name = str_replace(array('http-','_'), array('', '-'), strtolower($name));
+		
+		$name = strtolower($name);
+		
+		if (0 === strpos($name, 'http')) {
+			$name = substr($name, 4);
+		}
+		
+		$this->name = str_replace('_', '-', $name);
+		
+		return $this;
+	}
+	
+	/**
+	 * Sets header value
+	 * 
+	 * @param string $value Header value
+	 * @return $this
+	 */
+	protected function setValue($value) {
+		$this->value = $value;
 		return $this;
 	}
 	

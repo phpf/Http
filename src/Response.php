@@ -1,284 +1,78 @@
 <?php
-/**
- * @package Phpf\Http
- */
 
-namespace Phpf\Http;
+namespace xpl\Http;
 
-class Response {
+use xpl\Foundation\ResponseInterface;
 
-	/**
-	 * Value to use in Content-Type header.
-	 * 
-	 * @var string
-	 */
-	protected $content_type;
-	
-	/**
-	 * Default value to use in Content-Type header.
-	 * 
-	 * Uses ini value 'default_mimetype', if set.
-	 * 
-	 * @var string
-	 */
-	protected $default_content_type;
-	
-	/**
-	 * Charset to use in Content-Type header.
-	 * 
-	 * @var string
-	 */
-	protected $charset;
-
-	/**
-	 * HTTP response status code.
-	 * 
-	 * @var integer
-	 */
-	protected $status;
-
-	/**
-	 * Associative array of response headers.
-	 * 
-	 * @var array
-	 */
-	protected $headers = array();
-
-	/**
-	 * Response body string.
-	 * 
-	 * @var string
-	 */
+class Response implements ResponseInterface
+{
+		
+	protected $charset = 'UTF-8';
+	protected $status = 200;
 	protected $body;
+	protected $headers = array();
+	protected $send_body = true;
+	private $sent = false;
 	
 	/**
-	 * Whether to send a message body in the response.
+	 * Marks the response as sent and hence prevents it being sent (again).
 	 * 
-	 * False for HEAD requests as per RFC 3875.
+	 * The response does not actually have to have been sent.
 	 * 
-	 * @var boolean
-	 */
-	protected $send_body;
-	
-	/**
-	 * Whether the response has been sent.
-	 * 
-	 * Used for auto-send on shutdown and preventing multiple responses.
-	 * 
-	 * @var boolean
-	 */
-	protected $sent = false;
-	
-	/**
-	 * Whether to gzip the response body.
-	 * 
-	 * @var boolean
-	 */
-	protected $gzip_body;
-	
-	/**
-	 * Associative array of permitted content types.
-	 * 
-	 * @var array
-	 */
-	protected $content_types = array(
-		'html'	=> 'text/html',
-		'xml'	=> 'text/xml',
-		'jsonp' => 'text/javascript',
-		'json'	=> 'application/json',
-	);
-	
-	/**
-	 * Sets defaults and registers the 'send()' method as a shutdown function.
-	 * 
-	 * The response will not sent be more than once - if send() is called before 
-	 * shutdown, or multiple times otherwise, it will only be sent the first time.
-	 * 
-	 * @return void
-	 */
-	public function __construct() {
-		
-		$this->gzip_body = false;
-		
-		$this->charset = ini_get('default_charset') ?: 'UTF-8';
-		
-		$this->default_content_type = ini_get('default_mimetype') ?: 'text/html';
-		
-		// automatically send response
-		register_shutdown_function(array($this, 'send'));
-	}
-	
-	/**
-	 * Uses Request data to set some properties.
-	 * 
-	 * @param Request $request Current Request object.
 	 * @return $this
 	 */
-	public function setRequest(Request $request) {
-		
-		// send body if not a HEAD request
-		$this->send_body = ! $request->is('HEAD');
-		
-		$http = Http::instance();
-		
-		// first try to set content type using parameter (if set)
-		if (! isset($request->content_type) || ! $this->maybeSetContentType($request->content_type)) {
-			// now try using header (if set)
-			$this->content_type = $http->negotiateContentType(array_values($this->content_types));
-		}
-		
-		// shall we gzip?
-		if ($http->inRequestHeader('accept-encoding', 'gzip') && extension_loaded('zlib')) {
-			$this->gzip_body = true;
-		}
-		
-		// For XHR/AJAX requests, don't cache response, nosniff, and deny iframes
-		if ($request->isXhr()) {
-			$this->setCacheHeaders(false);
-			$this->nosniff();
-			$this->denyIframes();
-		}
-		
-		return $this;
-	}
-	
-	/**
-	 * Redirects the user's browser to a new location.
-	 * 
-	 * @param string $url URL to redirect user to.
-	 * @param int $status [Optional] Valid redirect status code to send. Default 0 (sends 302).
-	 * @param boolean $send Whether to send the redirect response immediately. Default true.
-	 * @return $this
-	 */
-	public function redirect($url, $status = 0, $send = true) {
-			
-		$this->setHeader('Location', $url, true);
-		
-		$this->send_body = false;
-		
-		if (300 < $status && 400 > $status) {
-			$this->setStatus($status);
-		}
-		
-		if ($send) {
-			$this->send();
-		}
-		
-		return $this;
-	}
-
-	/**
-	 * Sends the response headers and body, then exits.
-	 * 
-	 * @return void
-	 */
-	public function send() {
-		
-		// don't send more than once
-		if ($this->sent) return;
-		
-		// (maybe) start output buffering
-		if (ob_get_level()) {
-			#if (! $this->gzip_body || ! ob_start('ob_gzhandler'))
-				ob_start();
-		}
-		
-		// send at least some cache header
-		if (! isset($this->headers['Cache-Control'])) {
-			$this->nocache();
-		}
-
-		// send Status header
-		if (! isset($this->status)) {
-			if (isset($GLOBALS['HTTP_RESPONSE_CODE'])) {
-				$this->status = $GLOBALS['HTTP_RESPONSE_CODE'];
-			} else if (isset($this->headers['Location'])) {
-				$this->status = 302;
-			} else {
-				$this->status = 200;
-			}
-		}
-		
-		$http = Http::instance();
-		
-		$http->sendStatus($this->status);
-		
-		// send Content-Type header
-		$content_type = isset($this->content_type) ? $this->content_type : $this->default_content_type;
-		
-		$http->sendContentType($content_type, $this->getCharset());
-
-		// send other headers
-		foreach ( $this->headers as $name => $value ) {
-			header(sprintf("%s: %s", $name, $value), true);
-		}
-		
-		// output the body
-		if ($this->send_body) {
-			echo $this->body;
-		}
-		
-		if (ob_get_level()) {
-			ob_end_flush();
-		}
-		
+	final public function setSent() {
 		$this->sent = true;
-		
-		exit;
+		return $this;
 	}
-
+	
+	/**
+	 * Checks whether the response has been sent.
+	 * 
+	 * @return boolean
+	 */
+	final public function isSent() {
+		return $this->sent;
+	}
+	
 	/**
 	 * Sets the body content.
 	 * 
-	 * @param string|object $value String, or object with __toString() method.
-	 * @param string $how How to set the body; one of 'replace' (default), 'append', or 'prepend'.
+	 * @param mixed $body
 	 * @return $this
 	 */
-	public function setBody($value, $how = 'replace') {
-			
-		if (! is_scalar($value)) {
-			if (! method_exists($value, '__toString')) {
-				throw new \InvalidArgumentException('Cannot set var as body - given '.gettype($value));
-			}
-			$value = $value->__toString();
-		}
-
-		switch(strtolower($how)) {
-			case 'replace' :
-			default :
-				$this->body = $value;
-				break;
-			case 'append' :
-			case 'after' :
-				$this->body .= $value;
-				break;
-			case 'prepend' :
-			case 'before' :
-				$this->body = $value.$this->body;
-				break;
-		}
-		
+	public function setBody($body) {
+		$this->body = $body;
 		return $this;
-	}
-
-	/**
-	 * Adds content to the body.
-	 * 
-	 * @param string|object $value String or object with __toString() method.
-	 * @param string $how How to add the body. Default is 'append'.
-	 * @return $this
-	 */
-	public function addBody($value, $how = 'append') {
-		return $this->setBody($value, $how);
 	}
 	
 	/**
-	 * Returns body string.
+	 * Returns the body content.
 	 * 
-	 * @return string The body string.
+	 * @return mixed
 	 */
-	public function getBody(){
+	public function getBody() {
 		return $this->body;
+	}
+	
+	/**
+	 * Sets the HTTP response status code.
+	 * 
+	 * @param int $code HTTP status code.
+	 * @return $this
+	 */
+	public function setStatus($code) {
+		$this->status = (int)$code;
+		return $this;
+	}
+	
+	/**
+	 * Returns the response status code.
+	 * 
+	 * @return int HTTP status code.
+	 */
+	public function getStatus() {
+		return $this->status;
 	}
 	
 	/**
@@ -302,71 +96,111 @@ class Response {
 	}
 
 	/**
-	 * Sets the HTTP response status code.
+	 * Sets the Content-Type header.
 	 * 
-	 * @param int $code HTTP status code.
+	 * @param string $mimetype Content-type mime to send.
 	 * @return $this
 	 */
-	public function setStatus($code) {
-		$this->status = (int)$code;
+	public function setContentType($mimetype) {
+		$this->setHeader('Content-Type', $mimetype, true);
 		return $this;
 	}
 	
 	/**
-	 * Returns the response status code.
+	 * Returns the Content-Type header set, if any.
 	 * 
-	 * @return int HTTP status code.
-	 */
-	public function getStatus() {
-		return $this->status;
-	}
-	
-	/**
-	 * Sets the content type.
-	 * 
-	 * @param string $type Content-type MIME
-	 * @return $this
-	 */
-	public function setContentType($type) {
-		$this->content_type = $type;
-		return $this;
-	}
-	
-	/**
-	 * Returns content type, if set.
-	 * 
-	 * @return string|null Content-type if set, otherwise null.
+	 * @return string|null
 	 */
 	public function getContentType() {
-		return isset($this->content_type) ? $this->content_type : null;
+		return $this->getHeader('Content-Type');
 	}
 	
 	/**
-	 * Returns true if given response content-type/media type is known.
+	 * Sets the "Access-Control-Allow-Origin" header to the given value.
 	 * 
-	 * @param string $type Content-type MIME
-	 * @return boolean True if valid as response format, otherwise false.
+	 * Used to allow CORS requests. Set to "*" to allow all hosts.
+	 * 
+	 * @param string $value
+	 * @return $this
 	 */
-	public function isContentType($type) {
-		return isset($this->content_types[$type]);
+	public function setAccessControlAllowOrigin($value) {
+		$this->setHeader('Access-Control-Allow-Origin', $value);
+		return $this;
 	}
-
+	
 	/**
-	 * Sets $content_type, but only if $type is a valid content type.
+	 * Sets the various cache headers. Auto unsets 'Last-Modified'
+	 * if $expires_offset is falsy.
 	 * 
-	 * @param string $type Content-type MIME
-	 * @return boolean True if valid and set, otherwise false.
+	 * @param int|bool $expires_offset	Time in seconds from now to cache. 
+	 * 									Pass 0 or false for no cache.
+	 * @return $this
 	 */
-	public function maybeSetContentType($type) {
+	public function setCacheHeaders($expires_offset = 86400) {
 
-		if (isset($this->content_types[$type])) {
-			$this->content_type = $this->content_types[$type];
-			return true;
+		$headers = Util::buildCacheHeaders($expires_offset);
+		
+		// empty("0") is false negative
+		if (empty($expires_offset) || '0' === $expires_offset) {
+			unset($this->headers['Last-Modified']);
+		}
+
+		$this->setHeaders($headers);
+
+		return $this;
+	}
+	
+	/**
+	 * Redirects the user's browser to a new location.
+	 * 
+	 * @param string $url URL to redirect user to.
+	 * @param int $status [Optional] Valid redirect status code to send. Default 0 (sends 302).
+	 * @param boolean $send Whether to send the redirect response immediately. Default true.
+	 * @return $this
+	 */
+	public function redirect($url, $status = 0) {
+		
+		$this->setHeader('Location', $url, true);
+		
+		$this->send_body = false;
+		
+		if ($status && ((300 < $status && 400 > $status) || 201 == $status)) {
+			$this->setStatus($status);
 		}
 		
-		return false;
+		$this->send();
+		
+		exit();
 	}
-
+	
+	/**
+	 * Sends the response headers and body.
+	 * 
+	 * @return void
+	 */
+	public function send() {
+		
+		if ($this->sent) return;
+		
+		ob_get_level() and ob_start();
+		
+		if (! isset($this->status)) {
+			$this->status = $this->hasHeader('Location') ? 302 : http_response_code();
+		}
+		
+		Util::sendStatus($this->status);
+		
+		$this->sendHeaders();
+		
+		if ($this->send_body) {
+			echo $this->body;
+		}
+		
+		ob_get_level() and ob_flush();
+		
+		$this->sent = true;
+	}
+	
 	/**
 	 * Sets a header. Replaces existing by default.
 	 * 
@@ -378,7 +212,9 @@ class Response {
 	public function setHeader($name, $value, $overwrite = true) {
 		
 		if (true === $overwrite || ! isset($this->headers[$name])) {
-			$this->headers[$name] = $value;
+			$this->headers[$name] = array($value);
+		} else {
+			array_push($this->headers[$name], $value);
 		}
 
 		return $this;
@@ -396,6 +232,10 @@ class Response {
 			$this->setHeader($name, $value, $overwrite);
 		}
 		return $this;
+	}
+	
+	public function hasHeader($name) {
+		return isset($this->headers[$name]);
 	}
 
 	/**
@@ -416,7 +256,7 @@ class Response {
 	 * @return $this
 	 */
 	public function addHeaders(array $headers) {
-		$this->setHeaders($headers, false);
+		return $this->setHeaders($headers, false);
 	}
 
 	/**
@@ -427,95 +267,22 @@ class Response {
 	public function getHeaders() {
 		return $this->headers;
 	}
-
+	
+	public function getHeader($name) {
+		return $this->hasHeader($name) ? $this->headers[$name] : null;
+	}
+	
 	/**
-	 * Sets the various cache headers. Auto unsets 'Last-Modified'
-	 * if $expires_offset is falsy.
-	 * 
-	 * @param int|bool $expires_offset	Time in seconds from now to cache. 
-	 * 									Pass 0 or false for no cache.
-	 * @return $this
+	 * Sends the headers, handling multiples and string values.
+	 * @return void
 	 */
-	public function setCacheHeaders($expires_offset = 86400) {
-
-		$headers = http_build_cache_headers($expires_offset);
-		
-		// empty() returns false for zero as string
-		if (empty($expires_offset) || '0' === $expires_offset) {
-			header_remove('Last-Modified');
-			unset($this->headers['Last-Modified']);
+	public function sendHeaders() {
+		foreach ($this->headers as $name => $value) {
+			foreach ($value as $val) {
+				is_string($name) and $val = "{$name}: {$val}";
+				header($val, true);
+			}
 		}
-
-		$this->setHeaders($headers);
-
-		return $this;
 	}
-
-	/**
-	 * Sets the "X-Frame-Options" header.
-	 * 
-	 * @param string $value One of 'sameorigin'/true or 'deny'/false.
-	 * @return $this
-	 */
-	public function setFrameOptionsHeader($value) {
-
-		switch($value) {
-			case 'SAMEORIGIN' :
-			case 'sameorigin' :
-			case true :
-			default :
-				$value = 'SAMEORIGIN';
-				break;
-			case 'DENY' :
-			case 'deny' :
-			case false :
-				$value = 'DENY';
-				break;
-		}
-
-		return $this->setHeader('X-Frame-Options', $value);
-	}
-
-	/**
-	 * Sets 'X-Frame-Options' header to 'DENY'.
-	 * @return $this
-	 */
-	public function denyIframes() {
-		return $this->setFrameOptionsHeader('DENY');
-	}
-
-	/**
-	 * Sets 'X-Frame-Options' header to 'SAMEORIGIN'.
-	 * @return $this
-	 */
-	public function sameoriginIframes() {
-		return $this->setFrameOptionsHeader('SAMEORIGIN');
-	}
-
-	/**
-	 * Sets no cache headers.
-	 * @return $this
-	 */
-	public function nocache() {
-		return $this->setCacheHeaders(false);
-	}
-
-	/**
-	 * Sets 'X-Content-Type-Options' header to 'nosniff'.
-	 * @return $this
-	 */
-	public function nosniff() {
-		return $this->setHeader('X-Content-Type-Options', 'nosniff');
-	}
-
-	/** &Alias of setBody() */
-	public function setContent($value) {
-		return $this->setBody($value);
-	}
-
-	/** &Alias of addBody() */
-	public function addContent($value, $how = 'append') {
-		return $this->addBody($value, $how);
-	}
-
+	
 }

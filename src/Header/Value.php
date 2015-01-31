@@ -1,6 +1,6 @@
 <?php
 
-namespace Phpf\Http\Header;
+namespace xpl\Http\Header;
 
 /**
  * Represents a single header value.
